@@ -1,5 +1,5 @@
 # elm-node-app
-Run Elm applications on Node.js
+Run Elm CLI applications on Node.js.
 
 # TODO
 
