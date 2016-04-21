@@ -3,26 +3,25 @@ var Elm = require("Elm");
 
 var worker;
 
-function init(moduleName) {
+self.onmessage = function(messages) {
   if (typeof worker === "undefined") {
     worker = Elm.worker(Elm[moduleName], {});
 
-    worker.ports.receiveMessage.subscribe(function(msg) {
+    worker.ports.sendMessage.subscribe(function(msg) {
       self.postMessage(msg);
     });
-  } else {
-    throw new Error("Cannot init() a worker that has already been initialized!");
-  }
-}
-
-self.onmessage = function(event) {
-  if (event.msgType === "init") {
-    init(event.moduleName);
   }
 
-  if (worker === "undefined") {
-    throw new Error ("Attempted to send message \"" + event + "\" to a worker that had not been initialized yet!");
-  } else {
-    worker.ports.sendMessage.send(event.data);
-  }
+  messages.forEach(function(msg) {
+    switch (msg.cmd) {
+      case "terminate":
+        return self.close();
+
+      case "send":
+        return worker.ports.receiveMessage.send({recipient: null, data: msg.data});
+
+      default:
+        throw new Error("Unrecognized worker command: " + msg.cmd);
+    }
+  });
 };

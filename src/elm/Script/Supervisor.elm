@@ -1,27 +1,43 @@
-module Script.Supervisor (Cmd, terminate, terminateWorker, send, batch, none, WorkerId) where
+module Script.Supervisor (Cmd, terminate, send, batch, none, WorkerId, encodeCmd) where
 
-import Json.Encode exposing (Value)
+import Json.Encode as Encode exposing (Value)
 
 
 type alias WorkerId =
-  Int
+  String
 
 
 type Cmd
   = Terminate
-  | TerminateWorker WorkerId
   | Send WorkerId Value
   | Batch (List Cmd)
+
+
+encodeCmd : Cmd -> List Value
+encodeCmd cmd =
+  case cmd of
+    Terminate ->
+      -- Sending a null workerId terminates the supervisor.
+      [ Encode.object
+          [ ( "workerId", Encode.null )
+          , ( "data", Encode.null )
+          ]
+      ]
+
+    Send workerId data ->
+      [ Encode.object
+          [ ( "workerId", Encode.string workerId )
+          , ( "data", data )
+          ]
+      ]
+
+    Batch cmds ->
+      List.concatMap encodeCmd cmds
 
 
 terminate : Cmd
 terminate =
   Terminate
-
-
-terminateWorker : WorkerId -> Cmd
-terminateWorker =
-  TerminateWorker
 
 
 send : WorkerId -> Value -> Cmd
