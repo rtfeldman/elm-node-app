@@ -7,12 +7,16 @@ type alias WorkerId =
   String
 
 
+{-| A command the supervisor can run.
+-}
 type Cmd
   = Terminate
   | Send WorkerId Value
   | Batch (List Cmd)
 
 
+{-| Serialize a `Cmd` into a list of `Json.Value` instances.
+-}
 encodeCmd : Cmd -> List Value
 encodeCmd cmd =
   case cmd of
@@ -35,21 +39,29 @@ encodeCmd cmd =
       List.concatMap encodeCmd cmds
 
 
+{-| Terminate the supervisor and all workers.
+-}
 terminate : Cmd
 terminate =
   Terminate
 
 
+{-| Send a `Json.Value` to a particular worker.
+-}
 send : WorkerId -> Value -> Cmd
 send =
   Send
 
 
+{-| Combine several supervisor commands.
+-}
 batch : List Cmd -> Cmd
 batch =
   Batch
 
 
+{-| Do nothing.
+-}
 none : Cmd
 none =
   batch []
