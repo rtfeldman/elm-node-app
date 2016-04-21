@@ -1,7 +1,10 @@
 module Script (..) where
 
 import Signal exposing (Signal)
-import Json.Encode exposing (Value)
+import Json.Decode exposing (Value, Decoder, decodeValue)
+import Set exposing (Set)
+import Script.Worker as Worker
+import Script.Supervisor as Supervisor exposing (WorkerId)
 
 
 type MultiScript workerModel supervisorModel
@@ -9,25 +12,21 @@ type MultiScript workerModel supervisorModel
   | Supervisor (Set WorkerId) supervisorModel
 
 
-type alias WorkerId =
-  Int
-
-
 type alias Distribute workerModel supervisorModel =
   { worker :
-      { update : Value -> workerModel -> ( workerModel, WorkerAction )
-      , init : ( workerModel, WorkerAction )
+      { update : Value -> workerModel -> ( workerModel, Worker.Cmd )
+      , init : ( workerModel, Worker.Cmd )
       }
   , supervisor :
-      { update : WorkerId -> Value -> supervisorModel -> ( supervisorModel, SupervisorAction )
-      , init : ( supervisorModel, SupervisorAction )
+      { update : WorkerId -> Value -> supervisorModel -> ( supervisorModel, Supervisor.Cmd )
+      , init : ( supervisorModel, Supervisor.Cmd )
       }
   , receiveMessage : Signal Value
   , sendMessage : Signal Value
   }
 
 
-receiveMessage : Value
+receiveMessage : Value -> a
 receiveMessage value =
   case decodeValue supervisorMessageDecoder value of
     Ok Init ->
@@ -41,12 +40,16 @@ receiveMessage value =
 
 
 supervisorMessageDecoder : Decoder SupervisorMessage
+supervisorMessageDecoder =
+  Debug.crash "TODO"
+
+
 type SupervisorMessage
   = Init
   | MessageFromWorker WorkerId Value
 
 
-distribute : Distribute -> Script
+distribute : Distribute a b -> c
 distribute config =
   Debug.crash "TODO"
 

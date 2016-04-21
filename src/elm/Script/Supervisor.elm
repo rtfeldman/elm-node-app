@@ -1,5 +1,11 @@
 module Script.Supervisor (..) where
 
+import Json.Encode exposing (Value)
+
+
+type alias WorkerId =
+  Int
+
 
 type Cmd
   = Terminate
