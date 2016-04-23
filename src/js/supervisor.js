@@ -1,62 +1,118 @@
 var Worker = require("webworker-threads").Worker;
-var Elm = require("Elm");
 
-function start(moduleName, args) {
-  // Optional arguments to pass in, in case you have static ports defined that
-  // you'd like to receive them.
-  if (typeof args === "undefined") {
-    args = {};
+function Supervisor(elmApp, sendMessagePortName, receiveMessagePortName) {
+  if (typeof sendMessagePortName === "undefined") {
+    sendMessagePortName = "sendMessage";
+  } else if (typeof sendMessagePortName !== "string") {
+    throw new Error("Invalid sendMessagePortName: " + sendMessagePortName);
   }
 
-  return new Promise(function(resolve, reject) {
-    var supervisor = Elm.worker(Elm[moduleName], args);
-    var workers = {};
+  if (typeof receiveMessagePortName === "undefined") {
+    receiveMessagePortName = "receiveMessage";
+  } else if (typeof receiveMessagePortName !== "string") {
+    throw new Error("Invalid receiveMessagePortName: " + receiveMessagePortName);
+  }
 
-    fucntion terminateWorkers() {
-      Object.values(workers).forEach(function(worker) {
-        worker.terminate();
-      });
+  // Validate that elmApp looks right.
+  if (typeof elmApp !== "object") {
+    throw new Error("Invalid elmApp: " + elmApp);
+  } else if (typeof elmApp.ports !== "object") {
+    throw new Error("The provided elmApp is missing a `ports` field.");
+  }
+
+  [sendMessagePortName, receiveMessagePortName].forEach(function(portName) {
+    if (typeof elmApp.ports[portName] !== "object") {
+      throw new Error("The provided elmApp does not have a valid a port called `" + portName + "`.");
     }
+  });
 
-    function handleMessage(msg) {
-      var workerId = msg.workerId;
+  // Set up methods
 
-      if (workerId === null) {
-        // Receiving a workerId of null indicates that we should shut down.
-        terminateWorkers();
+  var emitter = new EventEmitter();
+  var ports = elmApp.ports;
+  var subscribe = ports[sendMessagePortName].subscribe;
+  var send = ports[receiveMessagePortName].send
 
-        // We're done!
-        resolve(msg.data);
-      } if (typeof workerId !== "string") {
-        terminateWorkers();
+  this.send = send;
+  this.addEventListener = emitter.addEventListener;
+  this.removeEventListener = emitter.removeEventListener;
 
-        reject("Cannot send message " + msg + " to workerId `" + workerId + "`!");
-      } else {
-        if (!workers.hasOwnProperty(workerId)) {
-          // This workerId is unknown to us; init a new worker before sending.
-          var worker = new Worker("worker.js");
+  var started = false; // CAUTION: this gets mutated!
 
-          worker.onmessage = function(data) {
-            // When the worker sends a message, tag it with this workerId
-            // and then pass it along to the supervisor.
-            supervisor.ports.receiveMessage.send({recipient: workerId, data: data});
-          };
-
-          // Record this new worker in the lookup table.
-          workers[workerId] = worker;
-        }
-
-        workers[workerId].postMessage({moduleName: moduleName, data: msg});
-      }
+  this.start = function() {
+    if (started) {
+      throw new Error("Attempted to start a supervisor that was already started!");
+    } else {
+      supervise(subscribe, send, emitter.emit);
     }
+  }
 
-    supervisor.ports.sendMessage.subscribe(function(messages) {
-      try {
-        messages.forEach(handleMessage);
-      } catch (err) {
-        terminateWorkers();
-        reject(err);
-      }
+  return this;
+}
+
+function supervise(subscribe, send, emit) {
+  var workers = {};
+
+  function emitClose(msg) {
+    emit("close", msg);
+  }
+
+  function emitMessage(msg) {
+    emit("message", msg);
+  }
+
+  function terminateWorkers() {
+    Object.values(workers).forEach(function(worker) {
+      worker.terminate();
     });
+  }
+
+  function handleMessage(msg) {
+    var workerId = msg.workerId;
+
+    if (workerId === null) {
+      // Receiving a workerId of null indicates a message for JS.
+      switch (msg.msgType) {
+        case "close":
+          terminateWorkers();
+
+          // We're done!
+          return emitClose(null);
+        case "message":
+          return emitMessage(msg.data);
+
+        default:
+          throw new Error("Unrecognized msgType: " + msg.msgType);
+      }
+    } if (typeof workerId !== "string") {
+      terminateWorkers();
+
+      emitClose("Error: Cannot send message " + msg + " to workerId `" + workerId + "`!");
+    } else {
+      if (!workers.hasOwnProperty(workerId)) {
+        // This workerId is unknown to us; init a new worker before sending.
+        var worker = new Worker("worker.js");
+
+        worker.onmessage = function(data) {
+          // When the worker sends a message, tag it with this workerId
+          // and then send it along
+          send({recipient: workerId, data: data});
+        };
+
+        // Record this new worker in the lookup table.
+        workers[workerId] = worker;
+      }
+
+      workers[workerId].postMessage({moduleName: moduleName, data: msg});
+    }
+  }
+
+  subscribe(function(messages) {
+    try {
+      messages.forEach(handleMessage);
+    } catch (err) {
+      terminateWorkers();
+      emitClose(err);
+    }
   });
 }
