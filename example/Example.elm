@@ -18,17 +18,17 @@ type alias SupervisorModel =
 updateWorker : Value -> WorkerModel -> ( WorkerModel, Worker.Cmd )
 updateWorker data model =
   if model.workerStuff > 0 then
-    Debug.crash "TODO"
+    ( { model | workerStuff = model.workerStuff + 2 }, Worker.none )
   else
-    Debug.crash "TODO"
+    ( { model | workerStuff = model.workerStuff + 1 }, Worker.none )
 
 
 updateSupervisor : WorkerId -> Value -> SupervisorModel -> ( SupervisorModel, Supervisor.Cmd )
 updateSupervisor workerId data model =
-  if model.supervisorStuff == "blah" then
-    Debug.crash "TODO"
+  if model.supervisorStuff == "" then
+    ( { model | supervisorStuff = model.supervisorStuff ++ "a" }, Supervisor.none )
   else
-    Debug.crash "TODO"
+    ( { model | supervisorStuff = model.supervisorStuff ++ "b" }, Supervisor.none )
 
 
 port sendMessage : Signal Value
