@@ -1,4 +1,4 @@
-module Script.Supervisor (Cmd, terminate, send, batch, none, WorkerId, encodeCmd) where
+module Script.Supervisor (Cmd, terminate, send, emit, batch, none, WorkerId, SupervisorMsg(..), encodeCmd) where
 
 import Json.Encode as Encode exposing (Value)
 
@@ -7,11 +7,17 @@ type alias WorkerId =
   String
 
 
+type SupervisorMsg
+  = FromWorker WorkerId Value
+  | FromOutside Value
+
+
 {-| A command the supervisor can run.
 -}
 type Cmd
   = Terminate
   | Send WorkerId Value
+  | Emit Value
   | Batch (List Cmd)
 
 
@@ -21,10 +27,18 @@ encodeCmd : Cmd -> List Value
 encodeCmd cmd =
   case cmd of
     Terminate ->
-      -- Sending a null workerId terminates the supervisor.
+      -- Sending a null workerId and null data terminates the supervisor.
       [ Encode.object
           [ ( "workerId", Encode.null )
           , ( "data", Encode.null )
+          ]
+      ]
+
+    Emit data ->
+      -- Sending a null workerId with String data emits it.
+      [ Encode.object
+          [ ( "workerId", Encode.null )
+          , ( "data", data )
           ]
       ]
 
@@ -58,6 +72,11 @@ send =
 batch : List Cmd -> Cmd
 batch =
   Batch
+
+
+emit : Value -> Cmd
+emit =
+  Emit
 
 
 {-| Do nothing.

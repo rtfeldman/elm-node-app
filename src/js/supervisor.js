@@ -1,4 +1,5 @@
 var Worker = require("webworker-threads").Worker;
+var EventEmitter = require("event-emitter");
 
 function Supervisor(elmApp, sendMessagePortName, receiveMessagePortName) {
   if (typeof sendMessagePortName === "undefined") {
@@ -33,9 +34,12 @@ function Supervisor(elmApp, sendMessagePortName, receiveMessagePortName) {
   var subscribe = ports[sendMessagePortName].subscribe;
   var send = ports[receiveMessagePortName].send
 
-  this.send = send;
-  this.addEventListener = emitter.addEventListener;
-  this.removeEventListener = emitter.removeEventListener;
+  for (var index = 0; index < methodsToCopy.length; index++) {
+    var key = methodsToCopy[index];
+    var method = emitter[key];
+
+    this[key] = function() { return method.apply(emitter, arguments); }
+  }
 
   var started = false; // CAUTION: this gets mutated!
 
@@ -43,8 +47,12 @@ function Supervisor(elmApp, sendMessagePortName, receiveMessagePortName) {
     if (started) {
       throw new Error("Attempted to start a supervisor that was already started!");
     } else {
-      supervise(subscribe, send, emitter.emit);
+      supervise(subscribe, send, this.emit);
     }
+  }
+
+  this.send = function(data) {
+    return send({forWorker: false, workerId: null, data: data});
   }
 
   return this;
@@ -71,18 +79,16 @@ function supervise(subscribe, send, emit) {
     var workerId = msg.workerId;
 
     if (workerId === null) {
-      // Receiving a workerId of null indicates a message for JS.
-      switch (msg.msgType) {
-        case "close":
-          terminateWorkers();
+      // Receiving a null workerId indicates a message for JS.
+      if (msg.data === null) {
+        // Receiving null workerId and null data means "terminate"
+        terminateWorkers();
 
-          // We're done!
-          return emitClose(null);
-        case "message":
-          return emitMessage(msg.data);
-
-        default:
-          throw new Error("Unrecognized msgType: " + msg.msgType);
+        // We're done!
+        return emitClose(null);
+      } else {
+        // Receiving a null workerId but non-null data means we should emit it.
+        return emitMessage(msg.data);
       }
     } if (typeof workerId !== "string") {
       terminateWorkers();
@@ -96,7 +102,7 @@ function supervise(subscribe, send, emit) {
         worker.onmessage = function(data) {
           // When the worker sends a message, tag it with this workerId
           // and then send it along
-          send({recipient: workerId, data: data});
+          send({forWorker: true, workerId: workerId, data: data});
         };
 
         // Record this new worker in the lookup table.
@@ -116,3 +122,7 @@ function supervise(subscribe, send, emit) {
     }
   });
 }
+
+var methodsToCopy = ["on", "off", "emit"];
+
+module.exports.Supervisor = Supervisor;

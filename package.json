@@ -1,0 +1,25 @@
+{
+  "name": "elm-node-app",
+  "version": "0.0.1",
+  "description": "Run node.js apps that can talk to Elm apps",
+  "main": "src/js/supervisor.js",
+  "directories": {
+    "example": "example"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rtfeldman/elm-node-app.git"
+  },
+  "author": "Richard Feldman <richard.t.feldman@gmail.com>",
+  "license": "BSD-3-Clause",
+  "bugs": {
+    "url": "https://github.com/rtfeldman/elm-node-app/issues"
+  },
+  "homepage": "https://github.com/rtfeldman/elm-node-app#readme",
+  "dependencies": {
+    "event-emitter": "0.3.4"
+  }
+}

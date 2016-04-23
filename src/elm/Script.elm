@@ -5,7 +5,7 @@ import Json.Decode as Decode exposing (Value, Decoder, (:=), decodeValue)
 import Json.Decode.Extra as Extra
 import Json.Encode as Encode
 import Script.Worker as Worker
-import Script.Supervisor as Supervisor exposing (WorkerId)
+import Script.Supervisor as Supervisor exposing (WorkerId, SupervisorMsg(..))
 
 
 type alias Distribute workerModel supervisorModel =
@@ -14,16 +14,16 @@ type alias Distribute workerModel supervisorModel =
       , init : ( workerModel, Worker.Cmd )
       }
   , supervisor :
-      { update : WorkerId -> Value -> supervisorModel -> ( supervisorModel, Supervisor.Cmd )
+      { update : SupervisorMsg -> supervisorModel -> ( supervisorModel, Supervisor.Cmd )
       , init : ( supervisorModel, Supervisor.Cmd )
       }
   , receiveMessage : Signal Value
   }
 
 
-messageDecoder : Decoder ( Maybe WorkerId, Value )
+messageDecoder : Decoder ( Bool, Maybe WorkerId, Value )
 messageDecoder =
-  Decode.object2 (,) ("recipient" := (Extra.maybeNull Decode.string)) ("data" := Decode.value)
+  Decode.object3 (,,) ("forWorker" := Decode.bool) ("workerId" := (Extra.maybeNull Decode.string)) ("data" := Decode.value)
 
 
 type Role workerModel supervisorModel
@@ -44,32 +44,19 @@ start config =
     --handleMessage : Value -> ( Role workerModel supervisorModel, Cmd ) -> ( Role workerModel supervisorModel, Cmd )
     handleMessage msg ( role, _ ) =
       case ( role, Decode.decodeValue messageDecoder msg ) of
-        ( _, Err msg ) ->
-          Debug.crash ("Malformed JSON received " ++ toString msg)
+        ( _, Err err ) ->
+          Debug.crash ("Malformed JSON received: " ++ toString err)
 
-        ( Uninitialized, Ok ( Just workerId, data ) ) ->
+        ( Uninitialized, Ok ( True, _, data ) ) ->
           let
-            -- We've received a supervisor message; we must be a supervisor!
-            ( model, cmd ) =
-              config.supervisor.init
-          in
-            case handleMessage msg ( (Supervisor (fst config.worker.init) model), None ) of
-              ( newRole, SupervisorCmd newCmd ) ->
-                ( newRole, SupervisorCmd (Supervisor.batch [ cmd, newCmd ]) )
-
-              ( _, WorkerCmd _ ) ->
-                Debug.crash "On init, received a worker command instead of the expected supervisor command"
-
-              ( _, None ) ->
-                Debug.crash "On init, received a None command instead of the expected supervisor command"
-
-        ( Uninitialized, Ok ( Nothing, data ) ) ->
-          let
-            -- We've received a worker message; we must be a supervisor!
+            -- We've received a worker message; we must be a worker!
             ( model, cmd ) =
               config.worker.init
+
+            ( supervisorModel, _ ) =
+              config.supervisor.init
           in
-            case handleMessage msg ( (Worker model (fst config.supervisor.init)), None ) of
+            case handleMessage msg ( (Worker model supervisorModel), None ) of
               ( newRole, WorkerCmd newCmd ) ->
                 ( newRole, WorkerCmd (Worker.batch [ cmd, newCmd ]) )
 
@@ -79,15 +66,42 @@ start config =
               ( _, None ) ->
                 Debug.crash "On init, received a None command instead of the expected worker command"
 
-        ( Supervisor workerModel model, Ok ( Just workerId, data ) ) ->
+        ( Uninitialized, Ok ( False, _, data ) ) ->
+          let
+            -- We've received a supervisor message; we must be a supervisor!
+            ( model, cmd ) =
+              config.supervisor.init
+
+            ( workerModel, _ ) =
+              config.worker.init
+          in
+            case handleMessage msg ( (Supervisor workerModel model), None ) of
+              ( newRole, SupervisorCmd newCmd ) ->
+                ( newRole, SupervisorCmd (Supervisor.batch [ cmd, newCmd ]) )
+
+              ( _, WorkerCmd _ ) ->
+                Debug.crash "On init, received a worker command instead of the expected supervisor command"
+
+              ( _, None ) ->
+                Debug.crash "On init, received a None command instead of the expected supervisor command"
+
+        ( Supervisor workerModel model, Ok ( False, maybeWorkerId, data ) ) ->
           let
             -- We're a supervisor; process the message accordingly
+            subMsg =
+              case maybeWorkerId of
+                Nothing ->
+                  FromOutside data
+
+                Just workerId ->
+                  FromWorker workerId data
+
             ( newModel, cmd ) =
-              config.supervisor.update workerId data model
+              config.supervisor.update subMsg model
           in
             ( Supervisor workerModel newModel, SupervisorCmd cmd )
 
-        ( Worker model supervisorModel, Ok ( Nothing, data ) ) ->
+        ( Worker model supervisorModel, Ok ( True, Nothing, data ) ) ->
           let
             -- We're a worker; process the message accordingly
             ( newModel, cmd ) =
@@ -95,25 +109,33 @@ start config =
           in
             ( Worker newModel supervisorModel, WorkerCmd cmd )
 
-        ( Supervisor _ _, Ok ( Nothing, _ ) ) ->
-          Debug.crash ("Received worker message while running as supervisor: " ++ toString msg)
+        ( Worker _ _, Ok ( True, Just _, data ) ) ->
+          Debug.crash ("Received workerId message intended for a worker: " ++ toString msg)
 
-        ( Worker _ _, Ok ( Just _, _ ) ) ->
+        ( Worker _ _, Ok ( False, _, _ ) ) ->
           Debug.crash ("Received supervisor message while running as worker: " ++ toString msg)
+
+        ( Supervisor _ _, Ok ( True, _, _ ) ) ->
+          Debug.crash ("Received worker message while running as supervisor: " ++ toString msg)
   in
     Signal.foldp handleMessage ( Uninitialized, None ) config.receiveMessage
-      |> Signal.map (snd >> cmdToMsg)
+      |> Signal.filterMap (snd >> cmdToMsg) Encode.null
 
 
-cmdToMsg : Cmd -> Value
+cmdToMsg : Cmd -> Maybe Value
 cmdToMsg rawCmd =
-  Encode.list
-    <| case rawCmd of
-        SupervisorCmd cmd ->
-          Supervisor.encodeCmd cmd
+  case rawCmd of
+    SupervisorCmd cmd ->
+      cmd
+        |> Supervisor.encodeCmd
+        |> Encode.list
+        |> Just
 
-        WorkerCmd cmd ->
-          Worker.encodeCmd cmd
+    WorkerCmd cmd ->
+      cmd
+        |> Worker.encodeCmd
+        |> Encode.list
+        |> Just
 
-        None ->
-          Debug.crash "Attempted to translate a None command into a message"
+    None ->
+      Nothing
