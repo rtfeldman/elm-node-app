@@ -1,5 +1,4 @@
 var Worker = require("webworker-threads").Worker;
-var EventEmitter = require("event-emitter");
 
 function Supervisor(elmApp, sendMessagePortName, receiveMessagePortName) {
   if (typeof sendMessagePortName === "undefined") {
@@ -29,16 +28,29 @@ function Supervisor(elmApp, sendMessagePortName, receiveMessagePortName) {
 
   // Set up methods
 
-  var emitter = new EventEmitter();
   var ports = elmApp.ports;
   var subscribe = ports[sendMessagePortName].subscribe;
   var send = ports[receiveMessagePortName].send
+  var listeners = {};
 
-  for (var index = 0; index < methodsToCopy.length; index++) {
-    var key = methodsToCopy[index];
-    var method = emitter[key];
+  function emit(msgType, data) {
+    if (typeof listeners[msgType] === "object") {
+      listeners[msgType].forEach(function(callback) {
+        callback(data);
+      });
+    }
+  }
 
-    this[key] = function() { return method.apply(emitter, arguments); }
+  this.on = function on(msgType, callback) {
+    if (typeof listeners[msgType] === "undefined") {
+      listeners[msgType] = [callback];
+    } else {
+      listeners[msgType].push(callback);
+    }
+  }
+
+  this.off = function off(msgType) {
+    delete listeners[msgType];
   }
 
   var started = false; // CAUTION: this gets mutated!
@@ -47,7 +59,7 @@ function Supervisor(elmApp, sendMessagePortName, receiveMessagePortName) {
     if (started) {
       throw new Error("Attempted to start a supervisor that was already started!");
     } else {
-      supervise(subscribe, send, this.emit);
+      supervise(subscribe, send, emit);
     }
   }
 
@@ -66,12 +78,12 @@ function supervise(subscribe, send, emit) {
   }
 
   function emitMessage(msg) {
-    emit("message", msg);
+    emit("emit", msg);
   }
 
   function terminateWorkers() {
-    Object.values(workers).forEach(function(worker) {
-      worker.terminate();
+    Object.keys(workers).forEach(function(id) {
+      workers[id].terminate();
     });
   }
 
@@ -122,7 +134,5 @@ function supervise(subscribe, send, emit) {
     }
   });
 }
-
-var methodsToCopy = ["on", "off", "emit"];
 
 module.exports.Supervisor = Supervisor;

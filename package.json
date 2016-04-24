@@ -18,8 +18,5 @@
   "bugs": {
     "url": "https://github.com/rtfeldman/elm-node-app/issues"
   },
-  "homepage": "https://github.com/rtfeldman/elm-node-app#readme",
-  "dependencies": {
-    "event-emitter": "0.3.4"
-  }
+  "homepage": "https://github.com/rtfeldman/elm-node-app#readme"
 }

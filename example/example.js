@@ -5,8 +5,8 @@ var elmApp = Elm.worker(Elm.Example, {receiveMessage: null});
 
 supervisor = new Supervisor(elmApp);
 
-supervisor.on("message", function(msg) {
-  console.log("Received message:", msg);
+supervisor.on("emit", function(msg) {
+  console.log("[supervisor]:", msg);
 });
 
 supervisor.on("close", function(msg) {
@@ -17,14 +17,15 @@ supervisor.start();
 
 supervisor.send({msgType: "echo", data: "yo!"});
 
-
 process.stdin.resume();
 process.stdin.setEncoding('utf8');
 
 var util = require("util");
 
 process.stdin.on("data", function (text) {
-  console.log("You said: ", util.inspect(text));
+  var val = util.inspect(text);
+
+  supervisor.send({msgType: "echo", data: val});
 
   if (text === "quit\n") {
     done();

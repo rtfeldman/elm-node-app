@@ -47,25 +47,6 @@ start config =
         ( _, Err err ) ->
           Debug.crash ("Malformed JSON received: " ++ toString err)
 
-        ( Uninitialized, Ok ( True, _, data ) ) ->
-          let
-            -- We've received a worker message; we must be a worker!
-            ( model, cmd ) =
-              config.worker.init
-
-            ( supervisorModel, _ ) =
-              config.supervisor.init
-          in
-            case handleMessage msg ( (Worker model supervisorModel), None ) of
-              ( newRole, WorkerCmd newCmd ) ->
-                ( newRole, WorkerCmd (Worker.batch [ cmd, newCmd ]) )
-
-              ( _, SupervisorCmd _ ) ->
-                Debug.crash "On init, received a supervisor command instead of the expected worker command"
-
-              ( _, None ) ->
-                Debug.crash "On init, received a None command instead of the expected worker command"
-
         ( Uninitialized, Ok ( False, _, data ) ) ->
           let
             -- We've received a supervisor message; we must be a supervisor!
@@ -84,6 +65,25 @@ start config =
 
               ( _, None ) ->
                 Debug.crash "On init, received a None command instead of the expected supervisor command"
+
+        ( Uninitialized, Ok ( True, _, data ) ) ->
+          let
+            -- We've received a worker message; we must be a worker!
+            ( model, cmd ) =
+              config.worker.init
+
+            ( supervisorModel, _ ) =
+              config.supervisor.init
+          in
+            case handleMessage msg ( (Worker model supervisorModel), None ) of
+              ( newRole, WorkerCmd newCmd ) ->
+                ( newRole, WorkerCmd (Worker.batch [ cmd, newCmd ]) )
+
+              ( _, SupervisorCmd _ ) ->
+                Debug.crash "On init, received a supervisor command instead of the expected worker command"
+
+              ( _, None ) ->
+                Debug.crash "On init, received a None command instead of the expected worker command"
 
         ( Supervisor workerModel model, Ok ( False, maybeWorkerId, data ) ) ->
           let
