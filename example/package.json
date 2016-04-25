@@ -9,6 +9,8 @@
   "author": "Richard Feldman<richard.t.feldman@gmail.com>",
   "license": "BSD-3-Clause",
   "dependencies": {
-    "elm-node-app": "file:.."
+    "elm-node-app": "file:..",
+    "elm-web-workers": "git+https://github.com/rtfeldman/elm-web-workers.git",
+    "webworker-threads": "^0.7.2"
   }
 }
