@@ -1,27 +1,56 @@
-var Worker = require("webworker-threads").Worker;
-var Elm = require("Elm");
+var module = typeof module === "undefined" ? {} : module;
+var setTimeout = typeof setTimeout === "undefined" ? function(callback) { return callback() } : setTimeout;
+var Elm;
+var elmApp;
 
-var worker;
+function sendError(err) {
+  self.postMessage({cmd: "WORKER_ERROR", contents: err});
+}
 
-self.onmessage = function(messages) {
-  if (typeof worker === "undefined") {
-    worker = Elm.worker(Elm[moduleName], {});
+function sendMessage(message) {
+  self.postMessage({cmd: "MESSAGE_FROM_WORKER", contents: message});
+}
 
-    worker.ports.sendMessage.subscribe(function(msg) {
-      self.postMessage(msg);
-    });
-  }
+self.onmessage = function(event) {
+  var messages = event.data;
 
   messages.forEach(function(msg) {
     switch (msg.cmd) {
-      case "terminate":
-        return self.close();
+      case "INIT_WORKER":
+        if (typeof elmApp === "undefined") {
+          var config = JSON.parse(msg.data);
 
-      case "send":
-        return worker.ports.receiveMessage.send({recipient: null, data: msg.data});
+          try {
+            importScripts(config.elmPath);
+
+            Elm = typeof Elm === "undefined" ? module.exports : Elm;
+            elmApp = Elm.worker(Elm[config.elmModuleName], config.args);
+          } catch(err) {
+            sendError("Error initializing Elm in worker: " + err);
+          }
+
+          elmApp.ports.sendMessage.subscribe(sendMessage);
+        } else {
+          sendError("Worker attempted to initialize twice!");
+        }
+
+        break;
+
+      case "SEND_TO_WORKER":
+        if (typeof elmApp === "undefined") {
+          sendError("Canot send() to a worker that has not yet been initialized!");
+        }
+
+        try {
+          elmApp.ports.receiveMessage.send({forWorker: true, workerId: null, data: msg.data});
+        } catch (err) {
+          sendError("Error attempting to send message to Elm Worker: " + err);
+        }
+
+        break;
 
       default:
-        throw new Error("Unrecognized worker command: " + msg.cmd);
+        sendError("Unrecognized worker command: " + msg.cmd);
     }
   });
 };

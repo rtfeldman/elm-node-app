@@ -29,7 +29,8 @@ encodeCmd cmd =
     Terminate ->
       -- Sending a null workerId and null data terminates the supervisor.
       [ Encode.object
-          [ ( "workerId", Encode.null )
+          [ ( "cmd", Encode.string "TERMINATE" )
+          , ( "workerId", Encode.null )
           , ( "data", Encode.null )
           ]
       ]
@@ -37,14 +38,16 @@ encodeCmd cmd =
     Emit data ->
       -- Sending a null workerId with String data emits it.
       [ Encode.object
-          [ ( "workerId", Encode.null )
+          [ ( "cmd", Encode.string "EMIT" )
+          , ( "workerId", Encode.null )
           , ( "data", data )
           ]
       ]
 
     Send workerId data ->
       [ Encode.object
-          [ ( "workerId", Encode.string workerId )
+          [ ( "cmd", Encode.string "SEND_TO_WORKER" )
+          , ( "workerId", Encode.string workerId )
           , ( "data", data )
           ]
       ]

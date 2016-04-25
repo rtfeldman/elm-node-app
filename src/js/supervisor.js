@@ -1,6 +1,15 @@
 var Worker = require("webworker-threads").Worker;
+var path = require("path");
 
-function Supervisor(elmApp, sendMessagePortName, receiveMessagePortName) {
+function Supervisor(workerPath, elmPath, elmModuleName, args, sendMessagePortName, receiveMessagePortName) {
+  if (typeof args === "undefined") {
+    args = {};
+  }
+
+  var Elm = typeof Elm === "undefined" ? require(elmPath) : Elm;
+
+  var elmApp = Elm.worker(Elm[elmModuleName], args);
+
   if (typeof sendMessagePortName === "undefined") {
     sendMessagePortName = "sendMessage";
   } else if (typeof sendMessagePortName !== "string") {
@@ -59,7 +68,13 @@ function Supervisor(elmApp, sendMessagePortName, receiveMessagePortName) {
     if (started) {
       throw new Error("Attempted to start a supervisor that was already started!");
     } else {
-      supervise(subscribe, send, emit);
+      var workerConfig = JSON.stringify({
+        elmPath: elmPath,
+        elmModuleName: elmModuleName,
+        args: args
+      });
+
+      supervise(subscribe, send, emit, workerPath, workerConfig);
     }
   }
 
@@ -67,10 +82,12 @@ function Supervisor(elmApp, sendMessagePortName, receiveMessagePortName) {
     return send({forWorker: false, workerId: null, data: data});
   }
 
+  this.Elm = Elm;
+
   return this;
 }
 
-function supervise(subscribe, send, emit) {
+function supervise(subscribe, send, emit, workerPath, workerConfig) {
   var workers = {};
 
   function emitClose(msg) {
@@ -88,40 +105,66 @@ function supervise(subscribe, send, emit) {
   }
 
   function handleMessage(msg) {
-    var workerId = msg.workerId;
-
-    if (workerId === null) {
-      // Receiving a null workerId indicates a message for JS.
-      if (msg.data === null) {
-        // Receiving null workerId and null data means "terminate"
+    switch (msg.cmd) {
+      case "TERMINATE":
         terminateWorkers();
 
         // We're done!
         return emitClose(null);
-      } else {
-        // Receiving a null workerId but non-null data means we should emit it.
+
+      case "EMIT":
         return emitMessage(msg.data);
-      }
-    } if (typeof workerId !== "string") {
-      terminateWorkers();
 
-      emitClose("Error: Cannot send message " + msg + " to workerId `" + workerId + "`!");
-    } else {
-      if (!workers.hasOwnProperty(workerId)) {
-        // This workerId is unknown to us; init a new worker before sending.
-        var worker = new Worker("worker.js");
+      case "SEND_TO_WORKER":
+        var workerId = msg.workerId;
 
-        worker.onmessage = function(data) {
-          // When the worker sends a message, tag it with this workerId
-          // and then send it along
-          send({forWorker: true, workerId: workerId, data: data});
-        };
+        if (typeof workerId !== "string") {
+          terminateWorkers();
 
-        // Record this new worker in the lookup table.
-        workers[workerId] = worker;
-      }
+          return emitClose("Error: Cannot send message " + msg + " to workerId `" + workerId + "`!");
+        } else {
+          // CAUTION: this may get mutated!
+          var messages = [{cmd: "SEND_TO_WORKER", data: msg.data}];
 
-      workers[workerId].postMessage({moduleName: moduleName, data: msg});
+          if (!workers.hasOwnProperty(workerId)) {
+            // This workerId is unknown to us; init a new worker before sending.
+            var worker = new Worker(workerPath);
+
+            worker.onmessage = function(event) {
+              var data = event.data || {};
+              var contents = data.contents;
+
+              switch (data.cmd) {
+                case "WORKER_ERROR":
+                  return console.error("Exception in worker[" + workerId + "]: " + contents);
+
+                case "MESSAGE_FROM_WORKER":
+                  if (typeof contents === "undefined") {
+                    return console.error("Received `undefined` as a message from worker[" + workerId + "]");
+                  } else {
+                    contents.forEach(function(content) {
+                      // When the worker sends a message, tag it with this workerId
+                      // and then send it along for the supervisor to handle.
+                      return send({forWorker: false, workerId: workerId, data: content});
+                    });
+                  }
+
+                default:
+                  throw new Error("Received unrecognized msgType from worker[" + workerId + "]: " + contents);
+              }
+            };
+
+            messages.unshift({cmd: "INIT_WORKER", data: workerConfig});
+
+            // Record this new worker in the lookup table.
+            workers[workerId] = worker;
+          }
+
+          return workers[workerId].postMessage(messages);
+        }
+
+      default:
+        throw new Error("Supervisor attempted to handle unrecognized command: " + msg.cmd);
     }
   }
 

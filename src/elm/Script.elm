@@ -45,7 +45,7 @@ start config =
     handleMessage msg ( role, _ ) =
       case ( role, Decode.decodeValue messageDecoder msg ) of
         ( _, Err err ) ->
-          Debug.crash ("Malformed JSON received: " ++ toString err)
+          Debug.crash ("Malformed JSON received: " ++ err)
 
         ( Uninitialized, Ok ( False, _, data ) ) ->
           let
@@ -110,13 +110,13 @@ start config =
             ( Worker newModel supervisorModel, WorkerCmd cmd )
 
         ( Worker _ _, Ok ( True, Just _, data ) ) ->
-          Debug.crash ("Received workerId message intended for a worker: " ++ toString msg)
+          Debug.crash ("Received workerId message intended for a worker.")
 
         ( Worker _ _, Ok ( False, _, _ ) ) ->
-          Debug.crash ("Received supervisor message while running as worker: " ++ toString msg)
+          Debug.crash ("Received supervisor message while running as worker.")
 
         ( Supervisor _ _, Ok ( True, _, _ ) ) ->
-          Debug.crash ("Received worker message while running as supervisor: " ++ toString msg)
+          Debug.crash ("Received worker message while running as supervisor.")
   in
     Signal.foldp handleMessage ( Uninitialized, None ) config.receiveMessage
       |> Signal.filterMap (snd >> cmdToMsg) Encode.null

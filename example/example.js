@@ -1,9 +1,10 @@
 var Supervisor = require("elm-node-app").Supervisor;
-var Elm = require("./Elm.js");
+var path = require("path");
+var elmPath = path.join(__dirname, "Elm.js");
+var workerPath = path.join(__dirname, "..", "src", "js", "worker.js");
 
-var elmApp = Elm.worker(Elm.Example, {receiveMessage: null});
+var supervisor = new Supervisor(workerPath, elmPath, "Example", {receiveMessage: null});
 
-supervisor = new Supervisor(elmApp);
 
 supervisor.on("emit", function(msg) {
   console.log("[supervisor]:", msg);
@@ -15,7 +16,15 @@ supervisor.on("close", function(msg) {
 
 supervisor.start();
 
-supervisor.send({msgType: "echo", data: "yo!"});
+supervisor.send({msgType: "echo", data: "Spawning some workers..."});
+supervisor.send({msgType: "spawn", data: "" + Math.random()});
+supervisor.send({msgType: "spawn", data: "" + Math.random()});
+supervisor.send({msgType: "spawn", data: "" + Math.random()});
+supervisor.send({msgType: "spawn", data: "" + Math.random()});
+supervisor.send({msgType: "spawn", data: "" + Math.random()});
+supervisor.send({msgType: "spawn", data: "" + Math.random()});
+supervisor.send({msgType: "spawn", data: "" + Math.random()});
+supervisor.send({msgType: "spawn", data: "" + Math.random()});
 
 process.stdin.resume();
 process.stdin.setEncoding('utf8');
@@ -35,3 +44,4 @@ process.stdin.on("data", function (text) {
 function done() {
   process.exit();
 }
+

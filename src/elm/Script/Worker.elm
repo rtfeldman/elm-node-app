@@ -1,4 +1,4 @@
-module Script.Worker (Cmd, send, terminate, batch, none, encodeCmd) where
+module Script.Worker (Cmd, send, batch, none, encodeCmd) where
 
 import Json.Encode as Encode exposing (Value)
 
@@ -7,7 +7,6 @@ import Json.Encode as Encode exposing (Value)
 -}
 type Cmd
   = Send Value
-  | Terminate
   | Batch (List Cmd)
 
 
@@ -17,18 +16,7 @@ encodeCmd : Cmd -> List Value
 encodeCmd cmd =
   case cmd of
     Send data ->
-      [ Encode.object
-          [ ( "cmd", Encode.string "send" )
-          , ( "data", data )
-          ]
-      ]
-
-    Terminate ->
-      [ Encode.object
-          [ ( "cmd", Encode.string "terminate" )
-          , ( "data", Encode.null )
-          ]
-      ]
+      [ data ]
 
     Batch cmds ->
       List.concatMap encodeCmd cmds
@@ -39,13 +27,6 @@ encodeCmd cmd =
 send : Value -> Cmd
 send =
   Send
-
-
-{-| Terminate this worker.
--}
-terminate : Cmd
-terminate =
-  Terminate
 
 
 {-| Combine several worker commands.
